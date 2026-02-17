@@ -38,7 +38,7 @@ async function startBotCommand(sock, chatId, senderId, message) {
 
         if (userAdminGroups.length === 0) {
             await sock.sendMessage(chatId, { 
-                text: '❌ You are not an admin in any groups!\n\n' +
+                text: 'Please use .startbot again\n\n' +
                       'Bot deployment failed.'
             });
             return;

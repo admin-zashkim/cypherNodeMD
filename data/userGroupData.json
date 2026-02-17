@@ -8,7 +8,7 @@
     },
     "120363421251107251@g.us": {
       "enabled": true,
-      "action": "delete"
+      "action": "kick"
     },
     "120363420743123004@g.us": {
       "enabled": true,
@@ -55,6 +55,11 @@
       "channelId": "120363406579591818@newsletter"
     },
     "120363407489449640@g.us": {
+      "enabled": true,
+      "message": "Welcome {user} to {group}! 🎉",
+      "channelId": "120363406579591818@newsletter"
+    },
+    "120363048479678025@g.us": {
       "enabled": true,
       "message": "Welcome {user} to {group}! 🎉",
       "channelId": "120363406579591818@newsletter"
