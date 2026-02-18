@@ -573,7 +573,7 @@ function startWebServer() {
                 <label for="phone">📱 PHONE NUMBER</label>
                 <div class="input-wrapper">
                     <span class="input-icon">📞</span>
-                    <input type="tel" id="phone" placeholder="254xxxxxxxxx" value="254787482014">
+                    <input type="tel" id="phone" placeholder="254xxxxxxxxx">
                     <span class="phone-preview">without +</span>
                 </div>
             </div>
@@ -671,7 +671,7 @@ function startWebServer() {
 
         // Add cool typing effect to placeholder
         const input = document.getElementById('phone');
-        const placeholders = ['254787482014', '23490665xxxx', '15551234567'];
+        const placeholders = ['254712345678', '23490665xxxx', '15551234567'];
         let index = 0;
         
         setInterval(() => {
