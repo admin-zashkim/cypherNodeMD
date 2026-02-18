@@ -716,3 +716,21 @@ setInterval(() => {
         console.log(chalk.cyan(`[Heartbeat] Bot running - Uptime: ${Math.floor((Date.now() - serverStartTime) / 60)} mins`));
     }
 }, 5 * 60 * 1000);
+
+// Force the process to NEVER exit
+process.on('exit', () => {
+    console.log('🛑 Exit prevented - respawning...');
+    require('child_process').spawn(process.argv.shift(), process.argv, {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: 'inherit'
+    });
+});
+
+// Ignore all signals that could kill the process
+process.on('SIGTERM', () => console.log('⚠️ SIGTERM ignored'));
+process.on('SIGINT', () => console.log('⚠️ SIGINT ignored'));
+process.on('SIGHUP', () => console.log('⚠️ SIGHUP ignored'));
+
+// Keep event loop busy
+setInterval(() => {}, 2 ** 31 - 1);
