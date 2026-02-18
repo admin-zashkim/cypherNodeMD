@@ -68,161 +68,559 @@ function startWebServer() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Pairing</title>
+    <title>CYPHER NODE MD - Pairing</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            background: #f0f2f4;
+            font-family: 'Space Grotesk', sans-serif;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2f 100%);
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
+            position: relative;
+            overflow-x: hidden;
         }
+
+        /* Animated background grid */
+        .grid-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 20s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        /* Floating particles */
+        .particle {
+            position: fixed;
+            width: 4px;
+            height: 4px;
+            background: rgba(0, 255, 255, 0.3);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: float 15s infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(100vh) scale(1); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateY(-100vh) scale(0.5); opacity: 0; }
+        }
+
         .container {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            background: rgba(20, 20, 35, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 
+                0 20px 40px rgba(0, 0, 0, 0.4),
+                0 0 20px rgba(0, 255, 255, 0.2),
+                inset 0 0 20px rgba(0, 255, 255, 0.05);
             width: 90%;
-            max-width: 400px;
+            max-width: 440px;
             text-align: center;
+            position: relative;
+            z-index: 10;
+            animation: containerGlow 3s ease-in-out infinite;
         }
-        h2 {
-            color: #128C7E;
-            margin-bottom: 20px;
+
+        @keyframes containerGlow {
+            0%, 100% { box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 255, 255, 0.2); }
+            50% { box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 255, 255, 0.4); }
         }
+
+        /* Cyberpunk corner accents */
+        .corner {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 2px solid #00ffff;
+            filter: drop-shadow(0 0 5px #00ffff);
+        }
+
+        .corner-tl {
+            top: 10px;
+            left: 10px;
+            border-right: none;
+            border-bottom: none;
+            animation: cornerPulse 2s infinite;
+        }
+
+        .corner-tr {
+            top: 10px;
+            right: 10px;
+            border-left: none;
+            border-bottom: none;
+            animation: cornerPulse 2s infinite 0.5s;
+        }
+
+        .corner-bl {
+            bottom: 10px;
+            left: 10px;
+            border-right: none;
+            border-top: none;
+            animation: cornerPulse 2s infinite 1s;
+        }
+
+        .corner-br {
+            bottom: 10px;
+            right: 10px;
+            border-left: none;
+            border-top: none;
+            animation: cornerPulse 2s infinite 1.5s;
+        }
+
+        @keyframes cornerPulse {
+            0%, 100% { opacity: 0.5; width: 30px; height: 30px; }
+            50% { opacity: 1; width: 35px; height: 35px; }
+        }
+
+        /* Bot header with glitch effect */
+        .bot-header {
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .bot-name {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #00ffff;
+            text-shadow: 
+                0 0 10px rgba(0, 255, 255, 0.5),
+                0 0 20px rgba(0, 255, 255, 0.3),
+                2px 2px 0 #ff00ff,
+                -2px -2px 0 #00ffff;
+            animation: glitch 3s infinite;
+            margin-bottom: 8px;
+        }
+
+        @keyframes glitch {
+            0%, 100% { transform: skew(0deg); }
+            95% { transform: skew(0deg); }
+            96% { transform: skew(5deg); }
+            97% { transform: skew(-5deg); }
+            98% { transform: skew(2deg); }
+        }
+
+        .bot-subtitle {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            position: relative;
+            display: inline-block;
+        }
+
+        .bot-subtitle::before,
+        .bot-subtitle::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 2px;
+            background: #00ffff;
+            top: 50%;
+            animation: linePulse 2s infinite;
+        }
+
+        .bot-subtitle::before {
+            left: -30px;
+        }
+
+        .bot-subtitle::after {
+            right: -30px;
+        }
+
+        @keyframes linePulse {
+            0%, 100% { opacity: 0.3; width: 20px; }
+            50% { opacity: 1; width: 30px; }
+        }
+
         .input-group {
-            margin-bottom: 20px;
+            margin-bottom: 24px;
             text-align: left;
+            position: relative;
         }
+
         label {
             display: block;
-            margin-bottom: 6px;
-            font-weight: 600;
-            color: #333;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #a0a0ff;
+            font-size: 14px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
         }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 12px;
+            color: #00ffff;
+            font-size: 20px;
+            opacity: 0.5;
+            transition: opacity 0.3s;
+        }
+
         input {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
+            padding: 14px 14px 14px 45px;
+            background: rgba(10, 10, 20, 0.8);
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            border-radius: 12px;
             font-size: 16px;
-            box-sizing: border-box;
-            transition: border 0.3s;
+            color: #ffffff;
+            font-family: 'Space Grotesk', monospace;
+            transition: all 0.3s ease;
         }
+
+        input:hover {
+            border-color: rgba(0, 255, 255, 0.6);
+            background: rgba(15, 15, 25, 0.9);
+        }
+
         input:focus {
-            border-color: #25D366;
+            border-color: #00ffff;
+            background: rgba(20, 20, 30, 0.95);
             outline: none;
+            box-shadow: 
+                0 0 20px rgba(0, 255, 255, 0.3),
+                inset 0 0 10px rgba(0, 255, 255, 0.1);
         }
+
+        input:focus + .input-icon {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
+        .phone-preview {
+            position: absolute;
+            right: 12px;
+            color: rgba(0, 255, 255, 0.3);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
         button {
-            background: #25D366;
-            color: white;
+            background: linear-gradient(135deg, #00ffff 0%, #ff00ff 100%);
+            color: #000;
             border: none;
-            padding: 14px 20px;
-            border-radius: 8px;
-            font-size: 16px;
+            padding: 16px 20px;
+            border-radius: 12px;
+            font-size: 18px;
             font-weight: bold;
             cursor: pointer;
             width: 100%;
-            transition: background 0.3s;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-family: 'Space Grotesk', sans-serif;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
         }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
         button:hover {
-            background: #128C7E;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 255, 255, 0.4);
         }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
         .loading {
             display: none;
-            margin-top: 20px;
+            margin: 30px 0;
         }
+
+        .loader {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: #00ffff;
+            border-bottom-color: #ff00ff;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         .dots {
             display: inline-block;
+            margin-left: 5px;
         }
+
         .dots span {
             opacity: 0;
-            animation: dot 1.4s infinite;
+            animation: dotPulse 1.4s infinite;
             font-size: 24px;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
         }
+
         .dots span:nth-child(1) { animation-delay: 0s; }
         .dots span:nth-child(2) { animation-delay: 0.2s; }
         .dots span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes dot {
-            0% { opacity: 0; }
-            50% { opacity: 1; }
-            100% { opacity: 0; }
+
+        @keyframes dotPulse {
+            0% { opacity: 0; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+            100% { opacity: 0; transform: scale(1); }
         }
+
         .code-box {
-            background: #f8f9fa;
-            border: 2px dashed #25D366;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            font-size: 28px;
+            background: linear-gradient(135deg, #0a0a1a, #1a1a2a);
+            border: 2px solid;
+            border-image: linear-gradient(135deg, #00ffff, #ff00ff) 1;
+            border-radius: 16px;
+            padding: 25px;
+            margin: 25px 0;
+            font-size: 32px;
             font-weight: bold;
-            letter-spacing: 4px;
-            color: #075E54;
+            letter-spacing: 6px;
+            color: #00ffff;
+            text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+            position: relative;
+            overflow: hidden;
+            animation: codeGlow 2s infinite;
         }
+
+        @keyframes codeGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(255, 0, 255, 0.3); }
+        }
+
+        .code-box::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, 
+                transparent 30%, 
+                rgba(0, 255, 255, 0.1) 50%, 
+                transparent 70%);
+            animation: codeScan 3s linear infinite;
+        }
+
+        @keyframes codeScan {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
         .copy-btn {
-            background: #128C7E;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
+            background: transparent;
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            padding: 12px 24px;
+            border-radius: 8px;
             font-size: 16px;
             cursor: pointer;
-            margin-top: 10px;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: none;
+            width: auto;
         }
+
         .copy-btn:hover {
-            background: #075E54;
+            background: #00ffff;
+            color: #000;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
         }
+
         .error {
-            color: #dc3545;
+            color: #ff00ff;
             margin-top: 15px;
+            padding: 10px;
+            border: 1px solid rgba(255, 0, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 0, 255, 0.1);
+            animation: errorPulse 2s infinite;
         }
+
+        @keyframes errorPulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
         .footer {
-            margin-top: 20px;
+            margin-top: 30px;
             font-size: 12px;
-            color: #888;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 1px;
+            position: relative;
+            padding-top: 20px;
         }
-        .info {
-            color: #075E54;
-            margin-top: 15px;
-            font-size: 14px;
+
+        .footer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 25%;
+            width: 50%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffff, #ff00ff, #00ffff, transparent);
+            animation: lineMove 3s infinite;
+        }
+
+        @keyframes lineMove {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #00ffff;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #00ffff;
+            margin-bottom: 20px;
+            animation: badgePulse 2s infinite;
+        }
+
+        @keyframes badgePulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.2); }
+            50% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.4); }
         }
     </style>
 </head>
 <body>
+    <!-- Animated background -->
+    <div class="grid-background"></div>
+    
+    <!-- Floating particles -->
+    <script>
+        for (let i = 0; i < 50; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.animationDelay = Math.random() * 15 + 's';
+            particle.style.animationDuration = (10 + Math.random() * 20) + 's';
+            document.body.appendChild(particle);
+        }
+    </script>
+
+    <!-- Cyberpunk corner accents -->
+    <div class="corner corner-tl"></div>
+    <div class="corner corner-tr"></div>
+    <div class="corner corner-bl"></div>
+    <div class="corner corner-br"></div>
+
     <div class="container" id="app">
-        <h2>QUEEN_ANITA</h2>
-        <p>Enter your number with country code.</p>
+        <div class="bot-header">
+            <h1 class="bot-name">CYPHER NODE MD</h1>
+            <div class="status-badge">⚡ SYSTEM ONLINE ⚡</div>
+            <div class="bot-subtitle">SECURE PAIRING PORTAL</div>
+        </div>
+
+        <p style="color: #a0a0ff; margin-bottom: 25px; font-size: 14px;">Enter your number with country code to initialize connection</p>
+        
         <div id="form-view">
             <div class="input-group">
-                <label for="phone">Phone Number (without + or spaces)</label>
-                <input type="tel" id="phone" placeholder="e.g. 23490665xxxx">
+                <label for="phone">📱 PHONE NUMBER</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">📞</span>
+                    <input type="tel" id="phone" placeholder="254xxxxxxxxx" value="254787482014">
+                    <span class="phone-preview">without +</span>
+                </div>
             </div>
-            <button onclick="submitNumber()">ENTER</button>
+            <button onclick="submitNumber()">
+                <span>⟫ INITIALIZE CONNECTION ⟪</span>
+            </button>
         </div>
+
         <div id="loading-view" class="loading">
-            <p>Please wait</p>
+            <div class="loader"></div>
+            <p style="color: #00ffff; margin: 10px 0;">ESTABLISHING SECURE CONNECTION</p>
             <div class="dots">
                 <span>.</span><span>.</span><span>.</span>
             </div>
         </div>
+
         <div id="code-view" style="display:none;">
+            <p style="color: #00ffff; margin-bottom: 10px;">🔐 YOUR PAIRING CODE</p>
             <div class="code-box" id="pairCode"></div>
-            <button class="copy-btn" onclick="copyCode()">Copy Code</button>
-            <p class="info">CODE: YUPRADEV</p>
-            <p style="margin-top:15px; font-size:14px;">Open WhatsApp → Settings → Linked Devices → Link a Device</p>
+            <button class="copy-btn" onclick="copyCode()">
+                <span>📋 COPY TO CLIPBOARD</span>
+            </button>
+            <p class="info" style="margin-top: 20px; color: #ff00ff;">CODE: YUPRADEV</p>
+            <p style="margin-top: 20px; font-size: 13px; color: #a0a0ff;">
+                Open WhatsApp → Settings → Linked Devices → Link a Device
+            </p>
         </div>
+
         <div id="error-view" class="error" style="display:none;"></div>
-        <div class="footer">Powered By David Cyril Tech</div>
+        
+        <div class="footer">
+            <span>⚡ POWERED BY DAVID CYRIL TECH ⚡</span>
+        </div>
     </div>
+
     <script>
         async function submitNumber() {
             const phone = document.getElementById('phone').value.trim().replace(/[^0-9]/g, '');
             if (!phone) {
-                alert('Please enter a phone number');
+                alert('Please enter a valid phone number');
                 return;
             }
+            if (phone.length < 10) {
+                alert('Number must be at least 10 digits');
+                return;
+            }
+
             document.getElementById('form-view').style.display = 'none';
             document.getElementById('loading-view').style.display = 'block';
             document.getElementById('code-view').style.display = 'none';
@@ -236,17 +634,18 @@ function startWebServer() {
                 });
                 const data = await response.json();
                 document.getElementById('loading-view').style.display = 'none';
+                
                 if (data.success) {
                     document.getElementById('pairCode').innerText = data.code;
                     document.getElementById('code-view').style.display = 'block';
                 } else {
-                    document.getElementById('error-view').innerText = 'Error: ' + data.error;
+                    document.getElementById('error-view').innerText = '⚠️ ' + data.error;
                     document.getElementById('error-view').style.display = 'block';
                     document.getElementById('form-view').style.display = 'block';
                 }
             } catch (err) {
                 document.getElementById('loading-view').style.display = 'none';
-                document.getElementById('error-view').innerText = 'Network error. Please try again.';
+                document.getElementById('error-view').innerText = '⚠️ NETWORK ERROR - PLEASE TRY AGAIN';
                 document.getElementById('error-view').style.display = 'block';
                 document.getElementById('form-view').style.display = 'block';
             }
@@ -255,11 +654,32 @@ function startWebServer() {
         function copyCode() {
             const code = document.getElementById('pairCode').innerText;
             navigator.clipboard.writeText(code).then(() => {
-                alert('Code copied!');
+                const btn = document.querySelector('.copy-btn');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '✓ COPIED!';
+                btn.style.background = '#00ffff';
+                btn.style.color = '#000';
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.style.background = 'transparent';
+                    btn.style.color = '#00ffff';
+                }, 2000);
             }).catch(() => {
-                alert('Failed to copy. Please copy manually.');
+                alert('❌ Manual copy failed. Please select and copy the code.');
             });
         }
+
+        // Add cool typing effect to placeholder
+        const input = document.getElementById('phone');
+        const placeholders = ['254787482014', '23490665xxxx', '15551234567'];
+        let index = 0;
+        
+        setInterval(() => {
+            if (document.activeElement !== input) {
+                input.placeholder = placeholders[index];
+                index = (index + 1) % placeholders.length;
+            }
+        }, 2000);
     </script>
 </body>
 </html>
