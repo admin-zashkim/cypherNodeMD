@@ -163,7 +163,11 @@ function startWebServer() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<<<<<<< HEAD
     <title>CYPHER NODE MD - Free Pairing</title>
+=======
+    <title>CYPHER NODE MD - Pairing</title>
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
         
@@ -185,6 +189,10 @@ function startWebServer() {
             overflow-x: hidden;
         }
 
+<<<<<<< HEAD
+=======
+        /* Animated background grid */
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
         .grid-background {
             position: fixed;
             top: 0;
@@ -204,6 +212,10 @@ function startWebServer() {
             100% { transform: translate(50px, 50px); }
         }
 
+<<<<<<< HEAD
+=======
+        /* Floating particles */
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
         .particle {
             position: fixed;
             width: 4px;
@@ -243,6 +255,10 @@ function startWebServer() {
             50% { box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 255, 255, 0.4); }
         }
 
+<<<<<<< HEAD
+=======
+        /* Cyberpunk corner accents */
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
         .corner {
             position: absolute;
             width: 30px;
@@ -288,6 +304,10 @@ function startWebServer() {
             50% { opacity: 1; width: 35px; height: 35px; }
         }
 
+<<<<<<< HEAD
+=======
+        /* Bot header with glitch effect */
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
         .bot-header {
             margin-bottom: 30px;
             position: relative;
@@ -625,18 +645,28 @@ function startWebServer() {
         @keyframes badgePulse {
             0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 255, 0.2); }
             50% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.4); }
+<<<<<<< HEAD
         }
 
         .note {
             margin-top: 15px;
             font-size: 12px;
             color: rgba(255, 255, 255, 0.5);
+=======
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
         }
     </style>
 </head>
 <body>
+<<<<<<< HEAD
     <div class="grid-background"></div>
     
+=======
+    <!-- Animated background -->
+    <div class="grid-background"></div>
+    
+    <!-- Floating particles -->
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
     <script>
         for (let i = 0; i < 50; i++) {
             const particle = document.createElement('div');
@@ -648,6 +678,10 @@ function startWebServer() {
         }
     </script>
 
+<<<<<<< HEAD
+=======
+    <!-- Cyberpunk corner accents -->
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
     <div class="corner corner-tl"></div>
     <div class="corner corner-tr"></div>
     <div class="corner corner-bl"></div>
@@ -656,6 +690,7 @@ function startWebServer() {
     <div class="container" id="app">
         <div class="bot-header">
             <h1 class="bot-name">CYPHER NODE MD</h1>
+<<<<<<< HEAD
             <div class="status-badge">⚡ FREE MULTI-USER ⚡</div>
             <div class="bot-subtitle">NO ADMIN • TEMPORARY SESSIONS</div>
         </div>
@@ -665,6 +700,17 @@ function startWebServer() {
         <div id="form-view">
             <div class="input-group">
                 <label for="phone">📱 YOUR WHATSAPP NUMBER</label>
+=======
+            <div class="status-badge">⚡ SYSTEM ONLINE ⚡</div>
+            <div class="bot-subtitle">SECURE PAIRING PORTAL</div>
+        </div>
+
+        <p style="color: #a0a0ff; margin-bottom: 25px; font-size: 14px;">Enter your number with country code to initialize connection</p>
+        
+        <div id="form-view">
+            <div class="input-group">
+                <label for="phone">📱 PHONE NUMBER</label>
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
                 <div class="input-wrapper">
                     <span class="input-icon">📞</span>
                     <input type="tel" id="phone" placeholder="254xxxxxxxxx">
@@ -672,13 +718,21 @@ function startWebServer() {
                 </div>
             </div>
             <button onclick="submitNumber()">
+<<<<<<< HEAD
                 <span>⟫ GENERATE CODE ⟪</span>
+=======
+                <span>⟫ INITIALIZE CONNECTION ⟪</span>
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
             </button>
         </div>
 
         <div id="loading-view" class="loading">
             <div class="loader"></div>
+<<<<<<< HEAD
             <p style="color: #00ffff; margin: 10px 0;">GENERATING CODE</p>
+=======
+            <p style="color: #00ffff; margin: 10px 0;">ESTABLISHING SECURE CONNECTION</p>
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
             <div class="dots">
                 <span>.</span><span>.</span><span>.</span>
             </div>
@@ -688,12 +742,21 @@ function startWebServer() {
             <p style="color: #00ffff; margin-bottom: 10px;">🔐 YOUR PAIRING CODE</p>
             <div class="code-box" id="pairCode"></div>
             <button class="copy-btn" onclick="copyCode()">
+<<<<<<< HEAD
                 <span>📋 COPY CODE</span>
             </button>
             <p style="margin-top: 20px; font-size: 13px; color: #a0a0ff;">
                 Open WhatsApp → Settings → Linked Devices → Link a Device
             </p>
             <p class="note">⚠️ Session auto-deletes when you logout from WhatsApp</p>
+=======
+                <span>📋 COPY TO CLIPBOARD</span>
+            </button>
+            <p class="info" style="margin-top: 20px; color: #ff00ff;">CODE: YUPRADEV</p>
+            <p style="margin-top: 20px; font-size: 13px; color: #a0a0ff;">
+                Open WhatsApp → Settings → Linked Devices → Link a Device
+            </p>
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
         </div>
 
         <div id="error-view" class="error" style="display:none;"></div>
@@ -739,7 +802,11 @@ function startWebServer() {
                 }
             } catch (err) {
                 document.getElementById('loading-view').style.display = 'none';
+<<<<<<< HEAD
                 document.getElementById('error-view').innerText = '⚠️ NETWORK ERROR';
+=======
+                document.getElementById('error-view').innerText = '⚠️ NETWORK ERROR - PLEASE TRY AGAIN';
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
                 document.getElementById('error-view').style.display = 'block';
                 document.getElementById('form-view').style.display = 'block';
             }
@@ -759,10 +826,18 @@ function startWebServer() {
                     btn.style.color = '#00ffff';
                 }, 2000);
             }).catch(() => {
+<<<<<<< HEAD
                 alert('❌ Copy failed - select manually');
             });
         }
 
+=======
+                alert('❌ Manual copy failed. Please select and copy the code.');
+            });
+        }
+
+        // Add cool typing effect to placeholder
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
         const input = document.getElementById('phone');
         const placeholders = ['254712345678', '23490665xxxx', '15551234567'];
         let index = 0;
@@ -851,8 +926,61 @@ async function handleNewUserPairing(phoneNumber) {
     }
     mkdirSync(sessionDir, { recursive: true });
 
+<<<<<<< HEAD
     let userBot = null;
     
+=======
+// Import lightweight store
+const store = require('./lib/lightweight_store')
+
+// Initialize store
+store.readFromFile()
+const settings = require('./settings')
+setInterval(() => store.writeToFile(), settings.storeWriteInterval || 10000)
+
+// Memory optimization - Force garbage collection if available
+setInterval(() => {
+    if (global.gc) {
+        global.gc()
+        console.log('🧹 Garbage collection completed')
+    }
+}, 60_000)
+// Memory monitoring - Just warn, don't kill
+// Memory monitoring - Just warn and collect garbage, NEVER kill the bot
+setInterval(() => {
+    const used = process.memoryUsage().rss / 1024 / 1024
+    if (used > 400) {
+        console.log(chalk.yellow(`⚠️ High memory usage: ${used.toFixed(2)}MB - Bot running normally`))
+        
+        // Force garbage collection if available
+        if (global.gc) {
+            global.gc()
+            console.log(chalk.green('🧹 Manual garbage collection triggered'))
+        }
+    } else if (used > 300) {
+        console.log(chalk.cyan(`📊 Memory usage: ${used.toFixed(2)}MB`))
+    }
+}, 30_000)
+
+let phoneNumber = "254787482014"
+let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
+
+global.botname = "Cypher Node MD Admin"
+global.themeemoji = "•"
+const pairingCode = !!phoneNumber || process.argv.includes("--pairing-code")
+const useMobile = process.argv.includes("--mobile")
+
+const rl = process.stdin.isTTY ? readline.createInterface({ input: process.stdin, output: process.stdout }) : null
+const question = (text) => {
+    if (rl) {
+        return new Promise((resolve) => rl.question(text, resolve))
+    } else {
+        return Promise.resolve(settings.ownerNumber || phoneNumber)
+    }
+}
+
+async function startXeonBotInc() {
+>>>>>>> b475c0d74bca2c9c45f52dca8a6c9284a9abebfc
     try {
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         const { version } = await fetchLatestBaileysVersion();

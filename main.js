@@ -980,6 +980,10 @@ case userMessage.startsWith('.chain'):
                 const antideleteMatch = userMessage.slice(11).trim();
                 await handleAntideleteCommand(sock, chatId, message, antideleteMatch);
                 break;
+
+                case userMessage.startsWith('.hack'):
+    await hackCommand(sock, chatId, senderId, message);
+    break;
             case userMessage === '.surrender':
                 // Handle surrender command for tictactoe game
                 await handleTicTacToeMove(sock, chatId, senderId, 'surrender');
