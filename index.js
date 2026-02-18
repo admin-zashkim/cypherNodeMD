@@ -44,13 +44,15 @@ const { PHONENUMBER_MCC } = require('@whiskeysockets/baileys/lib/Utils/generics'
 const { rmSync, existsSync } = require('fs')
 const { join } = require('path')
 
-// ---------- Web Server for Pairing ----------
+// ---------- Web Server for Pairing and Health Checks ----------
 const express = require('express');
 const bodyParser = require('body-parser');
 
 let webServer = null;
 let pairingCodePromise = null;
 let pendingPhoneNumber = null;
+let botReady = false;
+let serverStartTime = Date.now();
 
 function startWebServer() {
     if (webServer) return;
@@ -61,6 +63,24 @@ function startWebServer() {
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(bodyParser.json());
 
+    // Health check endpoint for Render
+    app.get('/health', (req, res) => {
+        if (botReady) {
+            res.status(200).json({ 
+                status: 'healthy', 
+                uptime: Math.floor((Date.now() - serverStartTime) / 1000),
+                bot: 'connected'
+            });
+        } else {
+            res.status(200).json({ 
+                status: 'starting', 
+                uptime: Math.floor((Date.now() - serverStartTime) / 1000),
+                bot: 'connecting'
+            });
+        }
+    });
+
+    // Root endpoint
     app.get('/', (req, res) => {
         res.send(`
 <!DOCTYPE html>
@@ -188,11 +208,26 @@ function startWebServer() {
             margin-top: 15px;
             font-size: 14px;
         }
+        .status {
+            margin-top: 10px;
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        .connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
     </style>
 </head>
 <body>
     <div class="container" id="app">
         <h2>QUEEN_ANITA</h2>
+        <div id="status" class="status connecting">Bot Status: Connecting...</div>
         <p>Enter your number with country code.</p>
         <div id="form-view">
             <div class="input-group">
@@ -217,6 +252,27 @@ function startWebServer() {
         <div class="footer">Powered By David Cyril Tech</div>
     </div>
     <script>
+        // Check bot status
+        async function checkStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                const statusDiv = document.getElementById('status');
+                if (data.bot === 'connected') {
+                    statusDiv.className = 'status connected';
+                    statusDiv.innerHTML = 'Bot Status: ✅ Connected';
+                } else {
+                    statusDiv.className = 'status connecting';
+                    statusDiv.innerHTML = 'Bot Status: 🔄 Connecting...';
+                }
+            } catch (e) {
+                console.log('Status check failed');
+            }
+        }
+        
+        checkStatus();
+        setInterval(checkStatus, 10000);
+
         async function submitNumber() {
             const phone = document.getElementById('phone').value.trim().replace(/[^0-9]/g, '');
             if (!phone) {
@@ -280,13 +336,11 @@ function startWebServer() {
 
         pendingPhoneNumber = phoneNumber;
         
-        // Create a promise that will be resolved with the pairing code
         pairingCodePromise = new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
                 reject(new Error('Pairing code generation timeout'));
             }, 60000);
 
-            // Store resolve/reject functions globally
             global.resolvePairing = (code) => {
                 clearTimeout(timeout);
                 resolve(code);
@@ -312,8 +366,8 @@ function startWebServer() {
         }
     });
 
-    webServer = app.listen(PORT, () => {
-        console.log(chalk.green(`🌐 Web pairing interface running at http://localhost:${PORT}`));
+    webServer = app.listen(PORT, '0.0.0.0', () => {
+        console.log(chalk.green(`🌐 Web server running at http://0.0.0.0:${PORT}`));
     });
 
     webServer.on('error', (err) => {
@@ -371,6 +425,10 @@ const question = (text) => {
     }
 }
 
+let isReconnecting = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+
 async function startXeonBotInc() {
     try {
         let { version, isLatest } = await fetchLatestBaileysVersion()
@@ -397,7 +455,12 @@ async function startXeonBotInc() {
             msgRetryCounterCache,
             defaultQueryTimeoutMs: 60000,
             connectTimeoutMs: 60000,
-            keepAliveIntervalMs: 10000,
+            keepAliveIntervalMs: 30000, // Increased to 30 seconds
+            emitOwnEvents: true,
+            fireInitQueries: true,
+            shouldIgnoreJid: () => false,
+            retryRequestDelayMs: 1000,
+            maxMsgRetryCount: 2
         })
 
         XeonBotInc.ev.on('creds.update', saveCreds)
@@ -483,15 +546,13 @@ async function startXeonBotInc() {
         XeonBotInc.public = true
         XeonBotInc.serializeM = (m) => smsg(XeonBotInc, m, store)
 
-        // Handle pairing code - NOW USING WEB INTERFACE
+        // Handle pairing code
         if (pairingCode && !XeonBotInc.authState.creds.registered) {
             if (useMobile) throw new Error('Cannot use pairing code with mobile api')
 
-            // Start web server
             startWebServer()
             console.log(chalk.yellow('📱 Web interface started. Open the URL in your browser to pair.'))
             
-            // Wait for phone number from web
             while (!pendingPhoneNumber) {
                 await delay(1000)
             }
@@ -504,7 +565,6 @@ async function startXeonBotInc() {
                     let code = await XeonBotInc.requestPairingCode(phoneNumber)
                     code = code?.match(/.{1,4}/g)?.join("-") || code
                     
-                    // Send code back to web interface
                     if (global.resolvePairing) {
                         global.resolvePairing(code)
                     }
@@ -517,6 +577,10 @@ async function startXeonBotInc() {
                     }
                 }
             }, 6000)
+        } else {
+            // If already registered, start web server for health checks
+            startWebServer();
+            botReady = true;
         }
 
         // Connection handling
@@ -529,14 +593,16 @@ async function startXeonBotInc() {
             
             if (connection === 'connecting') {
                 console.log(chalk.yellow('🔄 Connecting to WhatsApp...'))
+                botReady = false;
             }
             
             if (connection == "open") {
                 console.log(chalk.magenta(` `))
                 console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(XeonBotInc.user, null, 2)))
 
-                stopWebServer();
-
+                botReady = true;
+                reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                
                 try {
                     const botNumber = XeonBotInc.user.id.split(':')[0] + '@s.whatsapp.net';
                     await XeonBotInc.sendMessage(botNumber, {
@@ -567,10 +633,11 @@ async function startXeonBotInc() {
             }
             
             if (connection === 'close') {
+                botReady = false;
                 const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
                 const statusCode = lastDisconnect?.error?.output?.statusCode
                 
-                console.log(chalk.red(`Connection closed due to ${lastDisconnect?.error}, reconnecting ${shouldReconnect}`))
+                console.log(chalk.red(`Connection closed due to ${lastDisconnect?.error}`))
                 
                 if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                     try {
@@ -580,12 +647,24 @@ async function startXeonBotInc() {
                         console.error('Error deleting session:', error)
                     }
                     console.log(chalk.red('Session logged out. Please re-authenticate.'))
+                    return; // Don't reconnect on logout
                 }
                 
-                if (shouldReconnect) {
-                    console.log(chalk.yellow('Reconnecting...'))
-                    await delay(5000)
-                    startXeonBotInc()
+                // Limited reconnection attempts
+                if (shouldReconnect && !isReconnecting && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    isReconnecting = true;
+                    reconnectAttempts++;
+                    console.log(chalk.yellow(`Reconnecting... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`))
+                    
+                    // Exponential backoff
+                    const delayTime = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), 60000);
+                    await delay(delayTime);
+                    
+                    isReconnecting = false;
+                    startXeonBotInc();
+                } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                    console.log(chalk.red('Max reconnection attempts reached. Waiting for next cycle...'));
+                    // Don't exit, just wait - Render will restart if needed
                 }
             }
         })
@@ -614,10 +693,11 @@ async function startXeonBotInc() {
                         setTimeout(() => antiCallNotified.delete(callerJid), 60000);
                         await XeonBotInc.sendMessage(callerJid, { text: '📵 Anticall is enabled. Your call was rejected and you will be blocked.' });
                     }
+                    
+                    setTimeout(async () => {
+                        try { await XeonBotInc.updateBlockStatus(callerJid, 'block'); } catch {}
+                    }, 800);
                 }
-                setTimeout(async () => {
-                    try { await XeonBotInc.updateBlockStatus(callerJid, 'block'); } catch {}
-                }, 800);
             } catch (e) {}
         });
 
@@ -642,15 +722,21 @@ async function startXeonBotInc() {
         return XeonBotInc
     } catch (error) {
         console.error('Error in startXeonBotInc:', error)
-        await delay(5000)
-        startXeonBotInc()
+        botReady = false;
+        
+        // Don't auto-reconnect on fatal errors, let Render handle it
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            await delay(10000);
+            startXeonBotInc();
+        }
     }
 }
 
 // Start the bot
 startXeonBotInc().catch(error => {
     console.error('Fatal error:', error)
-    process.exit(1)
+    // Don't exit immediately on error
 })
 
 process.on('uncaughtException', (err) => {
@@ -668,3 +754,12 @@ fs.watchFile(file, () => {
     delete require.cache[file]
     require(file)
 })
+
+// Keep-alive and health check logging
+setInterval(() => {
+    if (botReady) {
+        console.log(chalk.cyan(`[Health] Bot running - Uptime: ${Math.floor((Date.now() - serverStartTime) / 60)} mins`));
+    } else {
+        console.log(chalk.yellow(`[Health] Bot connecting - Uptime: ${Math.floor((Date.now() - serverStartTime) / 60)} mins`));
+    }
+}, 5 * 60 * 1000);
