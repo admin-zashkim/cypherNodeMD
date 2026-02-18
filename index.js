@@ -42,6 +42,7 @@ const { join } = require('path')
 
 // ---------- Multi-Session Storage ----------
 const activeBots = new Map(); // Store active bot instances by phone number
+let adminBot = null; // Store admin bot instance
 
 // Function to setup message handlers for each bot
 function setupBotHandlers(bot, phoneNumber) {
@@ -76,7 +77,7 @@ function setupBotHandlers(bot, phoneNumber) {
         const { connection, lastDisconnect, qr } = s
         
         if (qr) {
-            console.log(chalk.yellow(`[${phoneNumber}] QR Code generated`))
+            console.log(chalk.yellow(`[${phoneNumber}] QR Code generated - Please scan with WhatsApp`))
         }
         
         if (connection === 'connecting') {
@@ -106,8 +107,21 @@ function setupBotHandlers(bot, phoneNumber) {
         }
         
         if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
             console.log(chalk.red(`[${phoneNumber}] Connection closed`))
-            activeBots.delete(phoneNumber);
+            
+            if (shouldReconnect) {
+                console.log(chalk.yellow(`[${phoneNumber}] Reconnecting...`))
+                setTimeout(() => {
+                    if (phoneNumber === 'ADMIN') {
+                        startAdminBot();
+                    } else {
+                        activeBots.delete(phoneNumber);
+                    }
+                }, 5000);
+            } else {
+                activeBots.delete(phoneNumber);
+            }
         }
     })
 
@@ -669,8 +683,8 @@ function startWebServer() {
     <div class="container" id="app">
         <div class="bot-header">
             <h1 class="bot-name">CYPHER NODE MD</h1>
-            <div class="status-badge">⚡ SYSTEM ONLINE ⚡</div>
-            <div class="bot-subtitle">MULTI-SESSION PAIRING</div>
+            <div class="status-badge">⚡ MULTI-SESSION MODE ⚡</div>
+            <div class="bot-subtitle">SECURE PAIRING PORTAL</div>
         </div>
 
         <p style="color: #a0a0ff; margin-bottom: 25px; font-size: 14px;">Enter your number with country code</p>
@@ -894,7 +908,6 @@ let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 
 global.botname = "Cypher Node MD Admin"
 global.themeemoji = "•"
-const pairingCode = !!phoneNumber || process.argv.includes("--pairing-code")
 const useMobile = process.argv.includes("--mobile")
 
 const rl = process.stdin.isTTY ? readline.createInterface({ input: process.stdin, output: process.stdout }) : null
@@ -906,17 +919,19 @@ const question = (text) => {
     }
 }
 
-// Main bot startup - This is the ADMIN bot
-async function startXeonBotInc() {
+// Start admin bot with pairing code mode
+async function startAdminBot() {
     try {
+        console.log(chalk.blue('🚀 Starting admin bot...'));
+        
         let { version } = await fetchLatestBaileysVersion()
         const { state, saveCreds } = await useMultiFileAuthState(`./session`)
         const msgRetryCounterCache = new NodeCache()
 
-        const XeonBotInc = makeWASocket({
+        const adminBot = makeWASocket({
             version,
             logger: pino({ level: 'silent' }),
-            printQRInTerminal: !pairingCode,
+            printQRInTerminal: false, // Don't print QR
             browser: ["Ubuntu", "Chrome", "20.0.04"],
             auth: {
                 creds: state.creds,
@@ -936,146 +951,35 @@ async function startXeonBotInc() {
             keepAliveIntervalMs: 10000,
         })
 
-        XeonBotInc.ev.on('creds.update', saveCreds)
-        store.bind(XeonBotInc.ev)
+        adminBot.ev.on('creds.update', saveCreds)
+        store.bind(adminBot.ev)
 
-        // Message handling for ADMIN bot
-        XeonBotInc.ev.on('messages.upsert', async chatUpdate => {
-            try {
-                const mek = chatUpdate.messages[0]
-                if (!mek.message) return
-                mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-                if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                    await handleStatus(XeonBotInc, chatUpdate);
-                    return;
-                }
-                if (!XeonBotInc.public && !mek.key.fromMe && chatUpdate.type === 'notify') {
-                    const isGroup = mek.key?.remoteJid?.endsWith('@g.us')
-                    if (!isGroup) return
-                }
-                if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
+        // Setup handlers for admin bot
+        setupBotHandlers(adminBot, 'ADMIN');
 
+        // Check if already registered
+        if (!adminBot.authState.creds.registered) {
+            console.log(chalk.yellow('📱 Admin bot not registered. Requesting pairing code...'));
+            
+            // Request pairing code for admin number
+            setTimeout(async () => {
                 try {
-                    await handleMessages(XeonBotInc, chatUpdate, true)
-                } catch (err) {
-                    console.error("Error in handleMessages:", err)
-                }
-            } catch (err) {
-                console.error("Error in messages.upsert:", err)
-            }
-        })
-
-        XeonBotInc.decodeJid = (jid) => {
-            if (!jid) return jid
-            if (/:\d+@/gi.test(jid)) {
-                let decode = jidDecode(jid) || {}
-                return decode.user && decode.server && decode.user + '@' + decode.server || jid
-            } else return jid
-        }
-
-        XeonBotInc.ev.on('contacts.update', update => {
-            for (let contact of update) {
-                let id = XeonBotInc.decodeJid(contact.id)
-                if (store && store.contacts) store.contacts[id] = { id, name: contact.notify }
-            }
-        })
-
-        XeonBotInc.getName = (jid, withoutContact = false) => {
-            let id = XeonBotInc.decodeJid(jid)
-            withoutContact = XeonBotInc.withoutContact || withoutContact
-            let v
-            if (id.endsWith("@g.us")) return new Promise(async (resolve) => {
-                v = store.contacts[id] || {}
-                if (!(v.name || v.subject)) v = await XeonBotInc.groupMetadata(id).catch(() => ({}))
-                resolve(v.name || v.subject || PhoneNumber('+' + id.replace('@s.whatsapp.net', '')).getNumber('international'))
-            })
-            else v = id === '0@s.whatsapp.net' ? {
-                id,
-                name: 'WhatsApp'
-            } : id === XeonBotInc.decodeJid(XeonBotInc.user.id) ?
-                XeonBotInc.user :
-                (store.contacts[id] || {})
-            return (withoutContact ? '' : v.name) || v.subject || v.verifiedName || PhoneNumber('+' + jid.replace('@s.whatsapp.net', '')).getNumber('international')
-        }
-
-        XeonBotInc.public = true
-        XeonBotInc.serializeM = (m) => smsg(XeonBotInc, m, store)
-
-        // Start web server for pairing
-        startWebServer()
-        console.log(chalk.yellow('📱 Multi-session web interface started'))
-
-        // Connection handling for ADMIN bot
-        XeonBotInc.ev.on('connection.update', async (s) => {
-            const { connection, lastDisconnect, qr } = s
-            
-            if (qr) {
-                console.log(chalk.yellow('📱 QR Code generated'))
-            }
-            
-            if (connection === 'connecting') {
-                console.log(chalk.yellow('🔄 Admin bot connecting...'))
-            }
-            
-            if (connection == "open") {
-                console.log(chalk.green('✅ Admin bot connected!'))
-                
-                try {
-                    const botNumber = XeonBotInc.user.id.split(':')[0] + '@s.whatsapp.net';
-                    await XeonBotInc.sendMessage(botNumber, {
-                        text: `🤖 CYPHER NODE MD ADMIN\n\n✅ Multi-session mode active\n⏰ Time: ${new Date().toLocaleString()}`,
-                        contextInfo: {
-                            forwardingScore: 1,
-                            isForwarded: true,
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363406579591818@newsletter',
-                                newsletterName: '𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 𝐌𝐃✅',
-                                serverMessageId: -1
-                            }
-                        }
-                    });
+                    let code = await adminBot.requestPairingCode(phoneNumber)
+                    code = code?.match(/.{1,4}/g)?.join("-") || code
+                    console.log(chalk.black(chalk.bgGreen(`\n🔐 Admin Pairing Code: ${code}\n`)))
+                    console.log(chalk.yellow('Use this code in WhatsApp to link the admin bot'))
                 } catch (error) {
-                    console.error('Error sending connection message:', error.message)
+                    console.error('Error requesting admin pairing code:', error)
                 }
+            }, 5000)
+        }
 
-                console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname} ]`)}\n\n`))
-                console.log(chalk.cyan(`< ================================================== >`))
-                console.log(chalk.magenta(`\n• YT CHANNEL: 𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 𝐌𝐃✅`))
-                console.log(chalk.magenta(`• GITHUB: mrunqiuehacker`))
-                console.log(chalk.magenta(`• WA NUMBER: ${owner}`))
-                console.log(chalk.green(`• 🤖 Admin Bot Connected!`))
-                console.log(chalk.blue(`Bot Version: ${settings.version}`))
-            }
-            
-            if (connection === 'close') {
-                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
-                const statusCode = lastDisconnect?.error?.output?.statusCode
-                
-                console.log(chalk.red(`Admin bot disconnected: ${lastDisconnect?.error?.message || 'Unknown'}`))
-                
-                if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-                    console.log(chalk.red('Session logged out'))
-                } else if (shouldReconnect) {
-                    console.log(chalk.yellow('Reconnecting admin bot...'))
-                    await delay(5000)
-                    startXeonBotInc()
-                }
-            }
-        })
-
-        return XeonBotInc
+        return adminBot
     } catch (error) {
-        console.error('Error in startXeonBotInc:', error)
-        await delay(5000)
-        startXeonBotInc()
+        console.error('Error starting admin bot:', error)
+        setTimeout(startAdminBot, 10000)
     }
 }
-
-// Start the admin bot
-startXeonBotInc().catch(error => {
-    console.error('Fatal error:', error)
-    // Don't exit - keep process alive
-})
 
 // Handle new user pairing
 async function handleNewUserPairing(phoneNumber) {
@@ -1112,23 +1016,34 @@ async function handleNewUserPairing(phoneNumber) {
 
         userBot.ev.on('creds.update', saveCreds);
 
-        // Setup handlers for this user bot
-        const configuredBot = setupBotHandlers(userBot, phoneNumber);
-        activeBots.set(phoneNumber, configuredBot);
-
-        // Wait a moment then request pairing code
-        await delay(2000);
-        const code = await userBot.requestPairingCode(phoneNumber);
-        const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
-        
-        console.log(chalk.green(`[${phoneNumber}] Pairing code: ${formattedCode}`));
-        
-        // Send code back to web interface
-        if (global.resolvePairing) {
-            global.resolvePairing(formattedCode);
+        // Check if already registered
+        if (!userBot.authState.creds.registered) {
+            console.log(chalk.yellow(`[${phoneNumber}] Not registered. Requesting pairing code...`));
+            
+            // Wait for connection to be ready
+            await delay(3000);
+            
+            const code = await userBot.requestPairingCode(phoneNumber);
+            const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
+            
+            console.log(chalk.green(`[${phoneNumber}] Pairing code: ${formattedCode}`));
+            
+            // Setup handlers after getting code
+            const configuredBot = setupBotHandlers(userBot, phoneNumber);
+            activeBots.set(phoneNumber, configuredBot);
+            
+            // Send code back to web interface
+            if (global.resolvePairing) {
+                global.resolvePairing(formattedCode);
+            }
+            
+            return formattedCode;
+        } else {
+            // Already registered, just setup handlers
+            const configuredBot = setupBotHandlers(userBot, phoneNumber);
+            activeBots.set(phoneNumber, configuredBot);
+            return null;
         }
-
-        return formattedCode;
     } catch (error) {
         console.error(`[${phoneNumber}] Error:`, error);
         if (global.rejectPairing) {
@@ -1138,12 +1053,26 @@ async function handleNewUserPairing(phoneNumber) {
     }
 }
 
-// Watch for pending phone numbers
-setInterval(async () => {
-    if (pendingPhoneNumber && !activeBots.has(pendingPhoneNumber)) {
-        await handleNewUserPairing(pendingPhoneNumber);
-    }
-}, 1000);
+// Start everything
+async function start() {
+    // Start web server first
+    startWebServer();
+    
+    // Start admin bot
+    startAdminBot();
+    
+    // Watch for pending phone numbers
+    setInterval(async () => {
+        if (pendingPhoneNumber && !activeBots.has(pendingPhoneNumber)) {
+            await handleNewUserPairing(pendingPhoneNumber);
+        }
+    }, 1000);
+}
+
+// Start the application
+start().catch(error => {
+    console.error('Fatal error:', error);
+});
 
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err)
