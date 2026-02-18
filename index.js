@@ -1,13 +1,9 @@
 /**
- * 𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 ✅ - A WhatsApp Bot
+ * 𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 ✅ - A WhatsApp Bot (Multi-Session)
  * Copyright (c) 2024 Professor
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the MIT License.
- * 
- * Credits:
- * - Baileys Library by @adiwajshing
- * - Pair Code implementation inspired by TechGod143 & DGXEON
  */
 require('./settings')
 const { Boom } = require('@hapi/boom')
@@ -41,8 +37,127 @@ const pino = require("pino")
 const readline = require("readline")
 const { parsePhoneNumber } = require("libphonenumber-js")
 const { PHONENUMBER_MCC } = require('@whiskeysockets/baileys/lib/Utils/generics')
-const { rmSync, existsSync } = require('fs')
+const { rmSync, existsSync, mkdirSync } = require('fs')
 const { join } = require('path')
+
+// ---------- Multi-Session Storage ----------
+const activeBots = new Map(); // Store active bot instances by phone number
+
+// Function to setup message handlers for each bot
+function setupBotHandlers(bot, phoneNumber) {
+    // Message handling
+    bot.ev.on('messages.upsert', async chatUpdate => {
+        try {
+            const mek = chatUpdate.messages[0]
+            if (!mek.message) return
+            mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
+            if (mek.key && mek.key.remoteJid === 'status@broadcast') {
+                await handleStatus(bot, chatUpdate);
+                return;
+            }
+            if (!bot.public && !mek.key.fromMe && chatUpdate.type === 'notify') {
+                const isGroup = mek.key?.remoteJid?.endsWith('@g.us')
+                if (!isGroup) return
+            }
+            if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
+
+            try {
+                await handleMessages(bot, chatUpdate, true)
+            } catch (err) {
+                console.error(`[${phoneNumber}] Error in handleMessages:`, err)
+            }
+        } catch (err) {
+            console.error(`[${phoneNumber}] Error in messages.upsert:`, err)
+        }
+    })
+
+    // Connection handling
+    bot.ev.on('connection.update', async (s) => {
+        const { connection, lastDisconnect, qr } = s
+        
+        if (qr) {
+            console.log(chalk.yellow(`[${phoneNumber}] QR Code generated`))
+        }
+        
+        if (connection === 'connecting') {
+            console.log(chalk.yellow(`[${phoneNumber}] Connecting to WhatsApp...`))
+        }
+        
+        if (connection == "open") {
+            console.log(chalk.green(`[${phoneNumber}] Connected successfully!`))
+            
+            try {
+                const botNumber = bot.user.id.split(':')[0] + '@s.whatsapp.net';
+                await bot.sendMessage(botNumber, {
+                    text: `🤖 CYPHER NODE MD Connected!\n\n📱 Number: ${phoneNumber}\n⏰ Time: ${new Date().toLocaleString()}\n✅ Status: Online`,
+                    contextInfo: {
+                        forwardingScore: 1,
+                        isForwarded: true,
+                        forwardedNewsletterMessageInfo: {
+                            newsletterJid: '120363406579591818@newsletter',
+                            newsletterName: '𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 𝐌𝐃✅',
+                            serverMessageId: -1
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error(`[${phoneNumber}] Error sending connection message:`, error.message)
+            }
+        }
+        
+        if (connection === 'close') {
+            console.log(chalk.red(`[${phoneNumber}] Connection closed`))
+            activeBots.delete(phoneNumber);
+        }
+    })
+
+    // Anticall handler
+    const antiCallNotified = new Set();
+    bot.ev.on('call', async (calls) => {
+        try {
+            const { readState: readAnticallState } = require('./commands/anticall');
+            const state = readAnticallState();
+            if (!state.enabled) return;
+            for (const call of calls) {
+                const callerJid = call.from || call.peerJid || call.chatId;
+                if (!callerJid) continue;
+                try {
+                    if (typeof bot.rejectCall === 'function' && call.id) {
+                        await bot.rejectCall(call.id, callerJid);
+                    } else if (typeof bot.sendCallOfferAck === 'function' && call.id) {
+                        await bot.sendCallOfferAck(call.id, callerJid, 'reject');
+                    }
+                } catch {}
+
+                if (!antiCallNotified.has(callerJid)) {
+                    antiCallNotified.add(callerJid);
+                    setTimeout(() => antiCallNotified.delete(callerJid), 60000);
+                    await bot.sendMessage(callerJid, { text: '📵 Anticall is enabled. Your call was rejected and you will be blocked.' });
+                }
+            }
+        } catch (e) {}
+    });
+
+    bot.ev.on('group-participants.update', async (update) => {
+        await handleGroupParticipantUpdate(bot, update);
+    });
+
+    bot.ev.on('messages.upsert', async (m) => {
+        if (m.messages[0].key && m.messages[0].key.remoteJid === 'status@broadcast') {
+            await handleStatus(bot, m);
+        }
+    });
+
+    bot.ev.on('status.update', async (status) => {
+        await handleStatus(bot, status);
+    });
+
+    bot.ev.on('messages.reaction', async (status) => {
+        await handleStatus(bot, status);
+    });
+
+    return bot;
+}
 
 // ---------- Web Server for Pairing ----------
 const express = require('express');
@@ -62,8 +177,7 @@ function startWebServer() {
     app.use(bodyParser.json());
 
     app.get('/', (req, res) => {
-        res.send(`
-<!DOCTYPE html>
+        res.send(`<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -90,7 +204,6 @@ function startWebServer() {
             overflow-x: hidden;
         }
 
-        /* Animated background grid */
         .grid-background {
             position: fixed;
             top: 0;
@@ -110,7 +223,6 @@ function startWebServer() {
             100% { transform: translate(50px, 50px); }
         }
 
-        /* Floating particles */
         .particle {
             position: fixed;
             width: 4px;
@@ -150,7 +262,6 @@ function startWebServer() {
             50% { box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 255, 255, 0.4); }
         }
 
-        /* Cyberpunk corner accents */
         .corner {
             position: absolute;
             width: 30px;
@@ -196,7 +307,6 @@ function startWebServer() {
             50% { opacity: 1; width: 35px; height: 35px; }
         }
 
-        /* Bot header with glitch effect */
         .bot-header {
             margin-bottom: 30px;
             position: relative;
@@ -538,10 +648,8 @@ function startWebServer() {
     </style>
 </head>
 <body>
-    <!-- Animated background -->
     <div class="grid-background"></div>
     
-    <!-- Floating particles -->
     <script>
         for (let i = 0; i < 50; i++) {
             const particle = document.createElement('div');
@@ -553,7 +661,6 @@ function startWebServer() {
         }
     </script>
 
-    <!-- Cyberpunk corner accents -->
     <div class="corner corner-tl"></div>
     <div class="corner corner-tr"></div>
     <div class="corner corner-bl"></div>
@@ -563,10 +670,10 @@ function startWebServer() {
         <div class="bot-header">
             <h1 class="bot-name">CYPHER NODE MD</h1>
             <div class="status-badge">⚡ SYSTEM ONLINE ⚡</div>
-            <div class="bot-subtitle">SECURE PAIRING PORTAL</div>
+            <div class="bot-subtitle">MULTI-SESSION PAIRING</div>
         </div>
 
-        <p style="color: #a0a0ff; margin-bottom: 25px; font-size: 14px;">Enter your number with country code to initialize connection</p>
+        <p style="color: #a0a0ff; margin-bottom: 25px; font-size: 14px;">Enter your number with country code</p>
         
         <div id="form-view">
             <div class="input-group">
@@ -578,13 +685,13 @@ function startWebServer() {
                 </div>
             </div>
             <button onclick="submitNumber()">
-                <span>⟫ INITIALIZE CONNECTION ⟪</span>
+                <span>⟫ GENERATE PAIRING CODE ⟪</span>
             </button>
         </div>
 
         <div id="loading-view" class="loading">
             <div class="loader"></div>
-            <p style="color: #00ffff; margin: 10px 0;">ESTABLISHING SECURE CONNECTION</p>
+            <p style="color: #00ffff; margin: 10px 0;">GENERATING CODE</p>
             <div class="dots">
                 <span>.</span><span>.</span><span>.</span>
             </div>
@@ -594,7 +701,7 @@ function startWebServer() {
             <p style="color: #00ffff; margin-bottom: 10px;">🔐 YOUR PAIRING CODE</p>
             <div class="code-box" id="pairCode"></div>
             <button class="copy-btn" onclick="copyCode()">
-                <span>📋 COPY TO CLIPBOARD</span>
+                <span>📋 COPY CODE</span>
             </button>
             <p class="info" style="margin-top: 20px; color: #ff00ff;">CODE: YUPRADEV</p>
             <p style="margin-top: 20px; font-size: 13px; color: #a0a0ff;">
@@ -645,7 +752,7 @@ function startWebServer() {
                 }
             } catch (err) {
                 document.getElementById('loading-view').style.display = 'none';
-                document.getElementById('error-view').innerText = '⚠️ NETWORK ERROR - PLEASE TRY AGAIN';
+                document.getElementById('error-view').innerText = '⚠️ NETWORK ERROR';
                 document.getElementById('error-view').style.display = 'block';
                 document.getElementById('form-view').style.display = 'block';
             }
@@ -665,11 +772,10 @@ function startWebServer() {
                     btn.style.color = '#00ffff';
                 }, 2000);
             }).catch(() => {
-                alert('❌ Manual copy failed. Please select and copy the code.');
+                alert('❌ Copy failed - select manually');
             });
         }
 
-        // Add cool typing effect to placeholder
         const input = document.getElementById('phone');
         const placeholders = ['254712345678', '23490665xxxx', '15551234567'];
         let index = 0;
@@ -695,18 +801,22 @@ function startWebServer() {
         phoneNumber = phoneNumber.replace(/[^0-9]/g, '');
         const pn = require('awesome-phonenumber');
         if (!pn('+' + phoneNumber).isValid()) {
-            return res.json({ success: false, error: 'Invalid phone number format. Include country code without + or spaces.' });
+            return res.json({ success: false, error: 'Invalid phone number format' });
+        }
+
+        // Check if already paired
+        const sessionDir = `./sessions/${phoneNumber}`;
+        if (existsSync(sessionDir) && activeBots.has(phoneNumber)) {
+            return res.json({ success: false, error: 'This number is already connected!' });
         }
 
         pendingPhoneNumber = phoneNumber;
         
-        // Create a promise that will be resolved with the pairing code
         pairingCodePromise = new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
                 reject(new Error('Pairing code generation timeout'));
             }, 60000);
 
-            // Store resolve/reject functions globally
             global.resolvePairing = (code) => {
                 clearTimeout(timeout);
                 resolve(code);
@@ -732,8 +842,8 @@ function startWebServer() {
         }
     });
 
-    webServer = app.listen(PORT, () => {
-        console.log(chalk.green(`🌐 Web pairing interface running at http://localhost:${PORT}`));
+    webServer = app.listen(PORT, '0.0.0.0', () => {
+        console.log(chalk.green(`🌐 Web server running on port ${PORT}`));
     });
 
     webServer.on('error', (err) => {
@@ -757,27 +867,25 @@ store.readFromFile()
 const settings = require('./settings')
 setInterval(() => store.writeToFile(), settings.storeWriteInterval || 10000)
 
-// Memory optimization - Force garbage collection if available
+// Memory optimization
 setInterval(() => {
     if (global.gc) {
         global.gc()
         console.log('🧹 Garbage collection completed')
     }
 }, 60_000)
-// Memory monitoring - Just warn, don't kill
-// Memory monitoring - Just warn and collect garbage, NEVER kill the bot
+
+// Memory monitoring - Never kill the bot
 setInterval(() => {
     const used = process.memoryUsage().rss / 1024 / 1024
     if (used > 400) {
-        console.log(chalk.yellow(`⚠️ High memory usage: ${used.toFixed(2)}MB - Bot running normally`))
-        
-        // Force garbage collection if available
+        console.log(chalk.yellow(`⚠️ High memory usage: ${used.toFixed(2)}MB`))
         if (global.gc) {
             global.gc()
-            console.log(chalk.green('🧹 Manual garbage collection triggered'))
+            console.log(chalk.green('🧹 Manual GC triggered'))
         }
     } else if (used > 300) {
-        console.log(chalk.cyan(`📊 Memory usage: ${used.toFixed(2)}MB`))
+        console.log(chalk.cyan(`📊 Memory: ${used.toFixed(2)}MB`))
     }
 }, 30_000)
 
@@ -798,9 +906,10 @@ const question = (text) => {
     }
 }
 
+// Main bot startup - This is the ADMIN bot
 async function startXeonBotInc() {
     try {
-        let { version, isLatest } = await fetchLatestBaileysVersion()
+        let { version } = await fetchLatestBaileysVersion()
         const { state, saveCreds } = await useMultiFileAuthState(`./session`)
         const msgRetryCounterCache = new NodeCache()
 
@@ -830,7 +939,7 @@ async function startXeonBotInc() {
         XeonBotInc.ev.on('creds.update', saveCreds)
         store.bind(XeonBotInc.ev)
 
-        // Message handling
+        // Message handling for ADMIN bot
         XeonBotInc.ev.on('messages.upsert', async chatUpdate => {
             try {
                 const mek = chatUpdate.messages[0]
@@ -846,28 +955,10 @@ async function startXeonBotInc() {
                 }
                 if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
 
-                if (XeonBotInc?.msgRetryCounterCache) {
-                    XeonBotInc.msgRetryCounterCache.clear()
-                }
-
                 try {
                     await handleMessages(XeonBotInc, chatUpdate, true)
                 } catch (err) {
                     console.error("Error in handleMessages:", err)
-                    if (mek.key && mek.key.remoteJid) {
-                        await XeonBotInc.sendMessage(mek.key.remoteJid, {
-                            text: '❌ An error occurred while processing your message.',
-                            contextInfo: {
-                                forwardingScore: 1,
-                                isForwarded: true,
-                                forwardedNewsletterMessageInfo: {
-                                    newsletterJid: '120363406579591818@newsletter',
-                                    newsletterName: '𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 𝐌𝐃✅',
-                                    serverMessageId: -1
-                                }
-                            }
-                        }).catch(console.error);
-                    }
                 }
             } catch (err) {
                 console.error("Error in messages.upsert:", err)
@@ -895,7 +986,7 @@ async function startXeonBotInc() {
             let v
             if (id.endsWith("@g.us")) return new Promise(async (resolve) => {
                 v = store.contacts[id] || {}
-                if (!(v.name || v.subject)) v = XeonBotInc.groupMetadata(id) || {}
+                if (!(v.name || v.subject)) v = await XeonBotInc.groupMetadata(id).catch(() => ({}))
                 resolve(v.name || v.subject || PhoneNumber('+' + id.replace('@s.whatsapp.net', '')).getNumber('international'))
             })
             else v = id === '0@s.whatsapp.net' ? {
@@ -910,64 +1001,29 @@ async function startXeonBotInc() {
         XeonBotInc.public = true
         XeonBotInc.serializeM = (m) => smsg(XeonBotInc, m, store)
 
-        // Handle pairing code - NOW USING WEB INTERFACE
-        if (pairingCode && !XeonBotInc.authState.creds.registered) {
-            if (useMobile) throw new Error('Cannot use pairing code with mobile api')
+        // Start web server for pairing
+        startWebServer()
+        console.log(chalk.yellow('📱 Multi-session web interface started'))
 
-            // Start web server
-            startWebServer()
-            console.log(chalk.yellow('📱 Web interface started. Open the URL in your browser to pair.'))
-            
-            // Wait for phone number from web
-            while (!pendingPhoneNumber) {
-                await delay(1000)
-            }
-
-            let phoneNumber = pendingPhoneNumber
-            console.log(chalk.green(`Phone number received: ${phoneNumber}`))
-
-            setTimeout(async () => {
-                try {
-                    let code = await XeonBotInc.requestPairingCode(phoneNumber)
-                    code = code?.match(/.{1,4}/g)?.join("-") || code
-                    
-                    // Send code back to web interface
-                    if (global.resolvePairing) {
-                        global.resolvePairing(code)
-                    }
-                    
-                    console.log(chalk.black(chalk.bgGreen(`Your Pairing Code : `)), chalk.black(chalk.white(code)))
-                } catch (error) {
-                    console.error('Error requesting pairing code:', error)
-                    if (global.rejectPairing) {
-                        global.rejectPairing(error)
-                    }
-                }
-            }, 6000)
-        }
-
-        // Connection handling
+        // Connection handling for ADMIN bot
         XeonBotInc.ev.on('connection.update', async (s) => {
             const { connection, lastDisconnect, qr } = s
             
             if (qr) {
-                console.log(chalk.yellow('📱 QR Code generated. Please scan with WhatsApp.'))
+                console.log(chalk.yellow('📱 QR Code generated'))
             }
             
             if (connection === 'connecting') {
-                console.log(chalk.yellow('🔄 Connecting to WhatsApp...'))
+                console.log(chalk.yellow('🔄 Admin bot connecting...'))
             }
             
             if (connection == "open") {
-                console.log(chalk.magenta(` `))
-                console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(XeonBotInc.user, null, 2)))
-
-                stopWebServer();
-
+                console.log(chalk.green('✅ Admin bot connected!'))
+                
                 try {
                     const botNumber = XeonBotInc.user.id.split(':')[0] + '@s.whatsapp.net';
                     await XeonBotInc.sendMessage(botNumber, {
-                        text: `🤖 Bot Connected Successfully!\n\n⏰ Time: ${new Date().toLocaleString()}\n✅ Status: Online and Ready!\n\n✅Make sure to join below channel`,
+                        text: `🤖 CYPHER NODE MD ADMIN\n\n✅ Multi-session mode active\n⏰ Time: ${new Date().toLocaleString()}`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
@@ -982,14 +1038,12 @@ async function startXeonBotInc() {
                     console.error('Error sending connection message:', error.message)
                 }
 
-                await delay(1999)
-                console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || '𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 ✅'} ]`)}\n\n`))
+                console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname} ]`)}\n\n`))
                 console.log(chalk.cyan(`< ================================================== >`))
-                console.log(chalk.magenta(`\n${global.themeemoji || '•'} YT CHANNEL: 𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 𝐌𝐃✅`))
-                console.log(chalk.magenta(`${global.themeemoji || '•'} GITHUB: mrunqiuehacker`))
-                console.log(chalk.magenta(`${global.themeemoji || '•'} WA NUMBER: ${owner}`))
-                console.log(chalk.magenta(`${global.themeemoji || '•'} CREDIT: 𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 𝐌𝐃✅`))
-                console.log(chalk.green(`${global.themeemoji || '•'} 🤖 Bot Connected Successfully! ✅`))
+                console.log(chalk.magenta(`\n• YT CHANNEL: 𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 𝐌𝐃✅`))
+                console.log(chalk.magenta(`• GITHUB: mrunqiuehacker`))
+                console.log(chalk.magenta(`• WA NUMBER: ${owner}`))
+                console.log(chalk.green(`• 🤖 Admin Bot Connected!`))
                 console.log(chalk.blue(`Bot Version: ${settings.version}`))
             }
             
@@ -997,74 +1051,17 @@ async function startXeonBotInc() {
                 const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
                 const statusCode = lastDisconnect?.error?.output?.statusCode
                 
-                console.log(chalk.red(`Connection closed due to ${lastDisconnect?.error}, reconnecting ${shouldReconnect}`))
+                console.log(chalk.red(`Admin bot disconnected: ${lastDisconnect?.error?.message || 'Unknown'}`))
                 
                 if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-                    try {
-                        rmSync('./session', { recursive: true, force: true })
-                        console.log(chalk.yellow('Session folder deleted. Please re-authenticate.'))
-                    } catch (error) {
-                        console.error('Error deleting session:', error)
-                    }
-                    console.log(chalk.red('Session logged out. Please re-authenticate.'))
-                }
-                
-                if (shouldReconnect) {
-                    console.log(chalk.yellow('Reconnecting...'))
+                    console.log(chalk.red('Session logged out'))
+                } else if (shouldReconnect) {
+                    console.log(chalk.yellow('Reconnecting admin bot...'))
                     await delay(5000)
                     startXeonBotInc()
                 }
             }
         })
-
-        // Anticall handler
-        const antiCallNotified = new Set();
-
-        XeonBotInc.ev.on('call', async (calls) => {
-            try {
-                const { readState: readAnticallState } = require('./commands/anticall');
-                const state = readAnticallState();
-                if (!state.enabled) return;
-                for (const call of calls) {
-                    const callerJid = call.from || call.peerJid || call.chatId;
-                    if (!callerJid) continue;
-                    try {
-                        if (typeof XeonBotInc.rejectCall === 'function' && call.id) {
-                            await XeonBotInc.rejectCall(call.id, callerJid);
-                        } else if (typeof XeonBotInc.sendCallOfferAck === 'function' && call.id) {
-                            await XeonBotInc.sendCallOfferAck(call.id, callerJid, 'reject');
-                        }
-                    } catch {}
-
-                    if (!antiCallNotified.has(callerJid)) {
-                        antiCallNotified.add(callerJid);
-                        setTimeout(() => antiCallNotified.delete(callerJid), 60000);
-                        await XeonBotInc.sendMessage(callerJid, { text: '📵 Anticall is enabled. Your call was rejected and you will be blocked.' });
-                    }
-                }
-                setTimeout(async () => {
-                    try { await XeonBotInc.updateBlockStatus(callerJid, 'block'); } catch {}
-                }, 800);
-            } catch (e) {}
-        });
-
-        XeonBotInc.ev.on('group-participants.update', async (update) => {
-            await handleGroupParticipantUpdate(XeonBotInc, update);
-        });
-
-        XeonBotInc.ev.on('messages.upsert', async (m) => {
-            if (m.messages[0].key && m.messages[0].key.remoteJid === 'status@broadcast') {
-                await handleStatus(XeonBotInc, m);
-            }
-        });
-
-        XeonBotInc.ev.on('status.update', async (status) => {
-            await handleStatus(XeonBotInc, status);
-        });
-
-        XeonBotInc.ev.on('messages.reaction', async (status) => {
-            await handleStatus(XeonBotInc, status);
-        });
 
         return XeonBotInc
     } catch (error) {
@@ -1074,11 +1071,79 @@ async function startXeonBotInc() {
     }
 }
 
-// Start the bot
+// Start the admin bot
 startXeonBotInc().catch(error => {
     console.error('Fatal error:', error)
-    process.exit(1)
+    // Don't exit - keep process alive
 })
+
+// Handle new user pairing
+async function handleNewUserPairing(phoneNumber) {
+    try {
+        console.log(chalk.blue(`[${phoneNumber}] Creating new session...`))
+        
+        const sessionDir = `./sessions/${phoneNumber}`;
+        if (!existsSync(sessionDir)) {
+            mkdirSync(sessionDir, { recursive: true });
+        }
+
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        const { version } = await fetchLatestBaileysVersion();
+        const msgRetryCounterCache = new NodeCache();
+
+        const userBot = makeWASocket({
+            version,
+            logger: pino({ level: 'silent' }),
+            printQRInTerminal: false,
+            browser: ["Ubuntu", "Chrome", "20.0.04"],
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
+            },
+            markOnlineOnConnect: true,
+            generateHighQualityLinkPreview: true,
+            syncFullHistory: false,
+            getMessage: async () => undefined,
+            msgRetryCounterCache,
+            defaultQueryTimeoutMs: 60000,
+            connectTimeoutMs: 60000,
+            keepAliveIntervalMs: 10000,
+        });
+
+        userBot.ev.on('creds.update', saveCreds);
+
+        // Setup handlers for this user bot
+        const configuredBot = setupBotHandlers(userBot, phoneNumber);
+        activeBots.set(phoneNumber, configuredBot);
+
+        // Wait a moment then request pairing code
+        await delay(2000);
+        const code = await userBot.requestPairingCode(phoneNumber);
+        const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
+        
+        console.log(chalk.green(`[${phoneNumber}] Pairing code: ${formattedCode}`));
+        
+        // Send code back to web interface
+        if (global.resolvePairing) {
+            global.resolvePairing(formattedCode);
+        }
+
+        return formattedCode;
+    } catch (error) {
+        console.error(`[${phoneNumber}] Error:`, error);
+        if (global.rejectPairing) {
+            global.rejectPairing(error);
+        }
+        throw error;
+    }
+}
+
+// Watch for pending phone numbers
+setInterval(async () => {
+    if (pendingPhoneNumber && !activeBots.has(pendingPhoneNumber)) {
+        await handleNewUserPairing(pendingPhoneNumber);
+    }
+}, 1000);
 
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err)
