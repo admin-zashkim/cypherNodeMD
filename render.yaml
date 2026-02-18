@@ -1,12 +1,14 @@
 services:
   - type: web
-    name: cypher-node-md
-    env: node
-    buildCommand: npm install
-    startCommand: node index.js
+    name: cypher-node
+    runtime: node
+    repo: https://github.com/aviator-hackers/cypherNodeMD
     plan: free
-    healthCheckPath: /
-    autoDeploy: true
+    region: oregon
+    buildCommand: npm install
+    startCommand: node render-start.js
+    healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
         value: 18.17.0
+    autoDeploy: false
