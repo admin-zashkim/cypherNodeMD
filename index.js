@@ -44,36 +44,23 @@ const { PHONENUMBER_MCC } = require('@whiskeysockets/baileys/lib/Utils/generics'
 const { rmSync, existsSync } = require('fs')
 const { join } = require('path')
 
-// ---------- Web Server for Pairing and Health Checks ----------
+// ---------- Web Server for Pairing ----------
 const express = require('express');
 const bodyParser = require('body-parser');
 
 let webServer = null;
 let pairingCodePromise = null;
 let pendingPhoneNumber = null;
-let botReady = false;
-let serverStartTime = Date.now();
-let activeBot = null; // Store the active bot instance
 
 function startWebServer() {
     if (webServer) return;
 
     const app = express();
-    const PORT = process.env.PORT || 10000; // Render uses port 10000
+    const PORT = process.env.PORT || 3000;
 
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(bodyParser.json());
 
-    // Health check endpoint for Render
-    app.get('/health', (req, res) => {
-        res.status(200).json({ 
-            status: 'alive',
-            bot: botReady ? 'connected' : 'connecting',
-            uptime: Math.floor((Date.now() - serverStartTime) / 1000)
-        });
-    });
-
-    // Root endpoint
     app.get('/', (req, res) => {
         res.send(`
 <!DOCTYPE html>
@@ -201,26 +188,11 @@ function startWebServer() {
             margin-top: 15px;
             font-size: 14px;
         }
-        .status {
-            margin-top: 10px;
-            padding: 5px;
-            border-radius: 5px;
-            font-size: 12px;
-        }
-        .connected {
-            background: #d4edda;
-            color: #155724;
-        }
-        .connecting {
-            background: #fff3cd;
-            color: #856404;
-        }
     </style>
 </head>
 <body>
     <div class="container" id="app">
         <h2>QUEEN_ANITA</h2>
-        <div id="status" class="status connecting">Bot Status: Connecting...</div>
         <p>Enter your number with country code.</p>
         <div id="form-view">
             <div class="input-group">
@@ -245,24 +217,6 @@ function startWebServer() {
         <div class="footer">Powered By David Cyril Tech</div>
     </div>
     <script>
-        async function checkStatus() {
-            try {
-                const response = await fetch('/health');
-                const data = await response.json();
-                const statusDiv = document.getElementById('status');
-                if (data.bot === 'connected') {
-                    statusDiv.className = 'status connected';
-                    statusDiv.innerHTML = 'Bot Status: ✅ Connected';
-                } else {
-                    statusDiv.className = 'status connecting';
-                    statusDiv.innerHTML = 'Bot Status: 🔄 Connecting...';
-                }
-            } catch (e) {}
-        }
-        
-        checkStatus();
-        setInterval(checkStatus, 10000);
-
         async function submitNumber() {
             const phone = document.getElementById('phone').value.trim().replace(/[^0-9]/g, '');
             if (!phone) {
@@ -324,19 +278,15 @@ function startWebServer() {
             return res.json({ success: false, error: 'Invalid phone number format. Include country code without + or spaces.' });
         }
 
-        // Check if already registered
-        const sessionDir = `./session`;
-        if (existsSync(path.join(sessionDir, 'creds.json'))) {
-            return res.json({ success: false, error: 'Bot already has an active session. Use .pair command in WhatsApp to get new code.' });
-        }
-
         pendingPhoneNumber = phoneNumber;
         
+        // Create a promise that will be resolved with the pairing code
         pairingCodePromise = new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
                 reject(new Error('Pairing code generation timeout'));
             }, 60000);
 
+            // Store resolve/reject functions globally
             global.resolvePairing = (code) => {
                 clearTimeout(timeout);
                 resolve(code);
@@ -362,8 +312,8 @@ function startWebServer() {
         }
     });
 
-    webServer = app.listen(PORT, '0.0.0.0', () => {
-        console.log(chalk.green(`🌐 Web server running at http://0.0.0.0:${PORT}`));
+    webServer = app.listen(PORT, () => {
+        console.log(chalk.green(`🌐 Web pairing interface running at http://localhost:${PORT}`));
     });
 
     webServer.on('error', (err) => {
@@ -394,13 +344,20 @@ setInterval(() => {
         console.log('🧹 Garbage collection completed')
     }
 }, 60_000)
-
-// Memory monitoring - Restart if RAM gets too high
+// Memory monitoring - Just warn, don't kill
+// Memory monitoring - Just warn and collect garbage, NEVER kill the bot
 setInterval(() => {
     const used = process.memoryUsage().rss / 1024 / 1024
     if (used > 400) {
-        console.log('⚠️ RAM too high (>400MB)')
-        // Don't exit, just warn
+        console.log(chalk.yellow(`⚠️ High memory usage: ${used.toFixed(2)}MB - Bot running normally`))
+        
+        // Force garbage collection if available
+        if (global.gc) {
+            global.gc()
+            console.log(chalk.green('🧹 Manual garbage collection triggered'))
+        }
+    } else if (used > 300) {
+        console.log(chalk.cyan(`📊 Memory usage: ${used.toFixed(2)}MB`))
     }
 }, 30_000)
 
@@ -420,10 +377,6 @@ const question = (text) => {
         return Promise.resolve(settings.ownerNumber || phoneNumber)
     }
 }
-
-let isReconnecting = false;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10;
 
 async function startXeonBotInc() {
     try {
@@ -451,15 +404,9 @@ async function startXeonBotInc() {
             msgRetryCounterCache,
             defaultQueryTimeoutMs: 60000,
             connectTimeoutMs: 60000,
-            keepAliveIntervalMs: 30000,
-            emitOwnEvents: true,
-            fireInitQueries: true,
-            shouldIgnoreJid: () => false,
-            retryRequestDelayMs: 1000,
-            maxMsgRetryCount: 2
+            keepAliveIntervalMs: 10000,
         })
 
-        activeBot = XeonBotInc;
         XeonBotInc.ev.on('creds.update', saveCreds)
         store.bind(XeonBotInc.ev)
 
@@ -487,6 +434,20 @@ async function startXeonBotInc() {
                     await handleMessages(XeonBotInc, chatUpdate, true)
                 } catch (err) {
                     console.error("Error in handleMessages:", err)
+                    if (mek.key && mek.key.remoteJid) {
+                        await XeonBotInc.sendMessage(mek.key.remoteJid, {
+                            text: '❌ An error occurred while processing your message.',
+                            contextInfo: {
+                                forwardingScore: 1,
+                                isForwarded: true,
+                                forwardedNewsletterMessageInfo: {
+                                    newsletterJid: '120363406579591818@newsletter',
+                                    newsletterName: '𝐂𝐘𝐏𝐇𝐄𝐑 𝐍𝐎𝐃𝐄 𝐌𝐃✅',
+                                    serverMessageId: -1
+                                }
+                            }
+                        }).catch(console.error);
+                    }
                 }
             } catch (err) {
                 console.error("Error in messages.upsert:", err)
@@ -529,15 +490,15 @@ async function startXeonBotInc() {
         XeonBotInc.public = true
         XeonBotInc.serializeM = (m) => smsg(XeonBotInc, m, store)
 
-        // Start web server immediately
-        startWebServer();
-
-        // Handle pairing code
+        // Handle pairing code - NOW USING WEB INTERFACE
         if (pairingCode && !XeonBotInc.authState.creds.registered) {
             if (useMobile) throw new Error('Cannot use pairing code with mobile api')
+
+            // Start web server
+            startWebServer()
+            console.log(chalk.yellow('📱 Web interface started. Open the URL in your browser to pair.'))
             
-            console.log(chalk.yellow('📱 Waiting for phone number via web interface...'))
-            
+            // Wait for phone number from web
             while (!pendingPhoneNumber) {
                 await delay(1000)
             }
@@ -550,6 +511,7 @@ async function startXeonBotInc() {
                     let code = await XeonBotInc.requestPairingCode(phoneNumber)
                     code = code?.match(/.{1,4}/g)?.join("-") || code
                     
+                    // Send code back to web interface
                     if (global.resolvePairing) {
                         global.resolvePairing(code)
                     }
@@ -574,16 +536,14 @@ async function startXeonBotInc() {
             
             if (connection === 'connecting') {
                 console.log(chalk.yellow('🔄 Connecting to WhatsApp...'))
-                botReady = false;
             }
             
             if (connection == "open") {
                 console.log(chalk.magenta(` `))
                 console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(XeonBotInc.user, null, 2)))
 
-                botReady = true;
-                reconnectAttempts = 0;
-                
+                stopWebServer();
+
                 try {
                     const botNumber = XeonBotInc.user.id.split(':')[0] + '@s.whatsapp.net';
                     await XeonBotInc.sendMessage(botNumber, {
@@ -614,26 +574,25 @@ async function startXeonBotInc() {
             }
             
             if (connection === 'close') {
-                botReady = false;
                 const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
                 const statusCode = lastDisconnect?.error?.output?.statusCode
                 
-                console.log(chalk.red(`Connection closed: ${lastDisconnect?.error?.message || 'Unknown'}`))
+                console.log(chalk.red(`Connection closed due to ${lastDisconnect?.error}, reconnecting ${shouldReconnect}`))
                 
                 if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
+                    try {
+                        rmSync('./session', { recursive: true, force: true })
+                        console.log(chalk.yellow('Session folder deleted. Please re-authenticate.'))
+                    } catch (error) {
+                        console.error('Error deleting session:', error)
+                    }
                     console.log(chalk.red('Session logged out. Please re-authenticate.'))
-                    return;
                 }
                 
-                // Gentle reconnect with backoff
-                if (shouldReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    reconnectAttempts++;
-                    const delayTime = Math.min(5000 * reconnectAttempts, 30000);
-                    console.log(chalk.yellow(`Reconnecting in ${delayTime/1000}s... (Attempt ${reconnectAttempts})`))
-                    
-                    setTimeout(() => {
-                        startXeonBotInc();
-                    }, delayTime);
+                if (shouldReconnect) {
+                    console.log(chalk.yellow('Reconnecting...'))
+                    await delay(5000)
+                    startXeonBotInc()
                 }
             }
         })
@@ -663,6 +622,9 @@ async function startXeonBotInc() {
                         await XeonBotInc.sendMessage(callerJid, { text: '📵 Anticall is enabled. Your call was rejected and you will be blocked.' });
                     }
                 }
+                setTimeout(async () => {
+                    try { await XeonBotInc.updateBlockStatus(callerJid, 'block'); } catch {}
+                }, 800);
             } catch (e) {}
         });
 
@@ -687,20 +649,16 @@ async function startXeonBotInc() {
         return XeonBotInc
     } catch (error) {
         console.error('Error in startXeonBotInc:', error)
-        botReady = false;
-        
-        // Gentle retry on error
-        setTimeout(() => {
-            startXeonBotInc();
-        }, 10000);
+        await delay(5000)
+        startXeonBotInc()
     }
 }
 
 // Start the bot
-startXeonBotInc();
-
-// Keep process alive
-process.stdin.resume();
+startXeonBotInc().catch(error => {
+    console.error('Fatal error:', error)
+    process.exit(1)
+})
 
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err)
@@ -710,27 +668,10 @@ process.on('unhandledRejection', (err) => {
     console.error('Unhandled Rejection:', err)
 })
 
-// Keep-alive
-setInterval(() => {
-    if (botReady) {
-        console.log(chalk.cyan(`[Heartbeat] Bot running - Uptime: ${Math.floor((Date.now() - serverStartTime) / 60)} mins`));
-    }
-}, 5 * 60 * 1000);
-
-// Force the process to NEVER exit
-process.on('exit', () => {
-    console.log('🛑 Exit prevented - respawning...');
-    require('child_process').spawn(process.argv.shift(), process.argv, {
-        cwd: process.cwd(),
-        detached: true,
-        stdio: 'inherit'
-    });
-});
-
-// Ignore all signals that could kill the process
-process.on('SIGTERM', () => console.log('⚠️ SIGTERM ignored'));
-process.on('SIGINT', () => console.log('⚠️ SIGINT ignored'));
-process.on('SIGHUP', () => console.log('⚠️ SIGHUP ignored'));
-
-// Keep event loop busy
-setInterval(() => {}, 2 ** 31 - 1);
+let file = require.resolve(__filename)
+fs.watchFile(file, () => {
+    fs.unwatchFile(file)
+    console.log(chalk.redBright(`Update ${__filename}`))
+    delete require.cache[file]
+    require(file)
+})
